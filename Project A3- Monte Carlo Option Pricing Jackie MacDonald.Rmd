@@ -1,0 +1,249 @@
+---
+title: "Project A3- Monte Carlo Option Pricing"
+author: "Jackie MacDonald"
+date: "11/16/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## [1] Introduction
+
+When you're trying to value options you can use simulations to think about the underlying variables, what kind of values it will assume, and based upon the values of the underlying construct you can apply an aggregation approach to figure out the values of a specified financial approach. In terms of options the best way to think about stock options would be based on their underlying assets which are stocks. If we come up with simulations, or the projection of asset values, for underlying assets which are stocks in this case then we can apply a formulatic approach to figure out the value of the option itself. For this project we'll be using the Stochastic process and Monte Carlo method to create our first function which will be a simulation of stock prices then using our simulation stock prices from our first function we will infer option values. When inferring option values we will look at the five differnt options we have such as "floatback," "fixedlookback," "asianarithmetic," "asiangeometric," and "assetornothing." Based on what specified option we're looking at we will use a formula that takes our simulated prices which leads to a payoff, which when discounted leads to a price then we find the average price across simulations finding the value of the option. 
+
+```{r message = FALSE}
+#first we get the libraries we'll need
+suppressWarnings(library(psych))
+library(data.table)
+```
+
+
+```{r message=FALSE}
+sim_fun<-function(s0=20,Maturity=.25,m=20,sig=.4,r=.03,n=1000,seed=12){
+  mat_path<-Maturity/m
+  set.seed(seed)
+  e <- as.vector(rnorm(n=n*m, mean=0, sd=1))
+  E <- matrix(e,nrow = n,ncol = m) 
+  fac <- exp((r-.5*sig^2)*mat_path+sig*sqrt(mat_path)*E) 
+  fac1<- data.table(t(fac))[,lapply(.SD, cumprod)]
+  St<-fac1[,lapply(.SD, function (i) i*s0)][,transpose(.SD)]
+  output<-list(Stock_Prices=St,
+                    Mean_End=mean(St[[m]]),
+                    Mean_Max=St[,transpose(.SD)][,mean(sapply(.SD, max))],
+                    Mean_Min=St[,transpose(.SD)][,mean(sapply(.SD, min))])
+  return(output)
+}
+```
+
+## [2]: Sim_fun Function- The Simulation Function
+### [2.1] Creating the Function
+Creating the "sim_fun" function we specified the defualt pricing inputs we'll need to create our simulated stock prices such as "s0," which is the underlying asset price as of today equal to 20, "maturity" which takes the year and divides it into months so .25 equals 3 months, "m," which is how many intervals it takes to the time of maturity, "sigma," which is equal to .4, "r," which is the interest rate equal to .03 "n," which will be our number of samples which is set to 1,000 and "seed." We set the seed to 12 so we can repeat our results. In order to create samples of our simulated underlying asset prices we're going to use the Weiner process formula indicated below.
+
+$S({t+\delta t})=S(t)exp[(r-\sigma^2/2)\delta t+\sigma\epsilon\sqrt \delta t]$
+
+Where:
+
+1.$s$ is the underlying price
+
+2.$t$ is one interval of a previous value of the price (an example would be the price of an underlying asset yesterday)
+
+3.$\delta t$ is the change of an interval of the price/how large the interval is
+
+4.$S(t)$ previous value of an underlying asset 
+
+5.$r$ is the interest rate
+
+6.$\sigma^2$ is the variance of the underlying asset
+
+7.$\epsilon$ is our unit normal variable N(0,1)/ sampling of distribution 
+
+The left hand side of the formula $S({t+\delta t})$ states that we are looking at the underlying price today compared to the underlying price from yesterday and creating a sequence of simulated prices from it. In order to run our Monte Carlo simulation we'll need multiple samples, or sequence of prices, where one sequence of prices is equal to one sample. To do this we'll create a matrix where each row is a price path and has "m" number of values which in this case is 20. And there are "n" number of rows/samples which in this case is 1,000. To generate our matrix we'll use a computational algorithm which will create a set of N(0,1) numbers, which is the epsilons in our equation, and then take the beginning stock price, our "s0," and create multiplicative factors (cumulative sum) for our subsequent stock prices after the beginning price, then take the beginning stock price multiply it by our multiplicative factors in our to get our final simulated stock prices.
+
+In our example to generate our matrix of N(0,1) random numbers we tell our function how many samples we want, which is stated by "n" so we want 1,000 samples, and then we tell our function how many random variables we'll want and we do this by multiplying "n" (our number of samples) by "m" our number of price paths. We use our "rnorm" function setting our mean to zero and standard deviation to 1 to create random numbers for our sampling. These random numbers will be stored in a matrix and be our epsilons, labeled "E," in our equation. This will give us a matrix of 1,000x20.
+
+Now that we calculated our epsilons we now want to covert our random variables in the matrix we just made to multiplicative factors. To do this we create a vectorized calculation following the right hand side of the Weiner process formula: $factor=exp[(r-\sigma^2/2)\delta t+\sigma\epsilon\sqrt \delta t]$ and multiply it by our epsilons "E".We store our new multiplicative factors in a variable called "fac." Note that these factors behave like interest factors(1+r).  
+
+Since we want to accumulate our factors in order to apply them to our beginning price we use our "cumprod" function on our factors, "fac," so it gives us an output of cumulative 1+returns.We then store it in "fac1." Because it takes R awhile to do calculations this way I transposed the data and put it in a data table so, so the calculations will go faster, and store it in a variable called "fac1." Then we multiply our "fac1" by our beginning price "s0" and this gives us our "St" variable which is our stock prices for every point of time. So in this case there are 20 stocks price paths, one for each time interval/step the stock has to go through before it reaches maturity.     
+
+From there we tell the function to create an output that includes our matrix of "Stock Prices," our mean of our ending prices which we made by calculating the mean of our ending stock prices which is when they reach maturity at the 20th time interval, and then calculating the mean of the maximum stock price path and the mean of the minimum stock price path.  
+
+```{r message=FALSE}
+sim_fun_output<-sim_fun()
+results<-setattr(list(sim_fun_output$Stock_Prices[1:2,],sim_fun_output[[2]],sim_fun_output[[3]],sim_fun_output[[4]]),"names",c("Stock_Prices","Mean_End","Mean_Max","Mean_Min"))#print this output for 2 price paths
+results
+```
+### [2.2] Running the Function & Results
+
+Calling upon our "sim_fun_output" function we get a stock price matrix using our default variables, and we store the output for only 2 of the simulated price paths that we created, and the summary measures of the the mean ending values of the stock price path, which is the mean of when the stock price reaches maturity at the 20th time interval, the mean of the maximum stock price path and the mean of the minimum stock price path and store it in a variable called "results" so we can call upon them. 
+
+```{r message=FALSE}
+option_est<-function(exotic,s0=20,Maturity=.25,m=20,sig=.4,r=.03,n=1000,seed=12,callorput="call",strike=20) {
+  sim_data<-sim_fun(s0=s0,Maturity = Maturity,m= m, sig = sig, n= n, seed = seed)$Stock_Prices
+  opt_val<- switch(exotic,
+                   "floatlookback"={
+                     sim_end<-unlist(sim_data[,m,with=F]) 
+                     sim_min<-sim_data[,transpose(.SD)][,sapply(.SD,min)]
+                     sim_max<-sim_data[,transpose(.SD)][,sapply(.SD,max)]
+                     if (callorput == "call"){
+                       f<-ifelse(sim_end>sim_min, sim_end-sim_min,0) #payoff
+                       mean(exp(-r*m)*f)
+                   }else{
+                     f<-ifelse(sim_max>sim_end, sim_max-sim_end,0)#payoff
+                     mean(exp(-r*m)*f)
+                   }},
+                   "fixedlookback"={
+                     sim_min<-sim_data[,transpose(.SD)][,sapply(.SD,min)]
+                     sim_max<-sim_data[,transpose(.SD)][,sapply(.SD,max)]
+                     if (callorput == "call"){
+                     f<-ifelse(sim_max>strike,sim_max-strike,0)#payoff
+                     mean(exp(-r*m)*f)  #mean pv for option price
+                   }else{
+                     f<-ifelse(sim_min<strike,strike-sim_min,0)#payoff
+                     mean(exp(-r*m)*f)  #mean pv for option price
+                   }},
+                   "asianarithmetic"={
+                     asian_mean<-sim_data[,transpose(.SD)][,sapply(.SD,mean)]
+                     if(callorput == "call"){
+                       f <- ifelse(asian_mean>strike, asian_mean-strike, 0)#payoff
+                       mean(exp(-r*m)*f)  #mean pv for option price
+                     }else{
+                       f <- ifelse(asian_mean<strike, strike-asian_mean, 0)#payoff
+                       mean(exp(-r*m)*f)  #mean pv for option price
+                     }},
+                   "asiangeometric"={
+                     asian_mean<-sim_data[,transpose(.SD)][,sapply(.SD,geometric.mean)]
+                     if(callorput == "call"){
+                     f <- ifelse(asian_mean>strike, asian_mean-strike, 0)#payoff
+                     mean(exp(-r*m)*f) #mean pv for option price
+                     }else{
+                     f <- ifelse(asian_mean<strike, strike-asian_mean, 0)#payoff
+                     mean(exp(-r*m)*f)  #mean pv for option price
+                   }},
+                   "assetornothing"={
+                     t_exp<-Maturity
+                     d1<-(log(s0/strike)+t_exp*(r+(sig^2)/2))/(sig*sqrt(t_exp))
+                     if(callorput=="call"){
+                       f<-s0*pnorm(d1)#payoff 
+                       mean(exp(-r*m)*f) #mean pv for option price
+                     }else{
+                       f<-s0*pnorm(-d1) #payoff
+                       mean(exp(-r*m)*f) #mean pv for option price
+                     }
+                   },
+                   stop("Exotic needs to be one of floatlookback,fixedlookback,asianarithmetic,asiangeometric,assetornothing"))
+}
+```
+
+## [3]: Option_est Function- The Option Estimate Function
+### [3.1] Creating the Function 
+
+Now that we created our simulated stock prices we want to look at our different option payoffs we can perform. To do this we'll want to follow the formulas for the different type of option payoffs, find the present values for each payoff option, and then find the average to find our estimate for our option price/premium. Creating our second function called "option_est" we use the same default inputs from our first function and input new variables such as "strike" price, which is equal to 20, a "callorput" argument, and a string of "exotic" payoff options which tells function what option type to use.Below are the formulas for the five different option payoffs we can perform in the function "floatlookback," "fixedlookback," "asianarithmetic," "asiangeometric," and "assetornothing." Their explainations along with the discussion of use cases and limitations are also listed. When the function determines what option to use then it uses the specified option logic to either perform the "call" or the "put" logic to find the payoff for each price path.A call option is the right to buy an underlying stock at a predetermined price up until a specified expiration date, and a put option gives the holder the right to sell an asset, at a specified price, by a specified date. For this example we'll put both the call and put options in our function using "if else" statements" so we can choose either one. From there it finds the mean/average of the present value of the payoffs for every option using our present value operator "exp(-r*m)" and multiply it by our payoff for each path "f" and then finding the mean of the overall equation to give us our estimate for our option price. If the "exotic" given is not one of the specified options we're using it will give us a return statement giving us the option names we can use.  
+
+_The payoff functions for the Float Look Back Call and the Float Look Back put, respectively, are:_
+
+${LookbackCall_{float}=\max(S_{T}-S_{min},0)=S_{T}-S_{min}}$
+
+${LookbackPut_{float}=\max(S_{max}-S_{T},0)=S_{max}-S_{T},}$
+
+Where:
+
+1.${S_{max}}$ is the asset's maximum price during the life of the option
+
+2.${S_{min}}$ is the asset's minimum price during the life of the option
+
+3.${ S_{T}}$ is the underlying asset's price at maturity ${T}$
+
+This options price is determined at maturity. The Floating Look Back is the highest/optimum value of the underlying asset's price during the option's life. For the call, the strike price is fixed at the asset's lowest price during the option's life, and, for the put, it is fixed at the asset's highest price. Our "floatlookback" option tells us that if we use our call logic then if the underlying assets' price at maturity minus the minimum price during the life of the option is greater than 0 that's the option's pay off and if it is not greater then zero the payoff is zero. If we use the put logic the floatlookback option tells us that if the asset's maximum price during the life of the option minus the underlying assets' price at maturity is greater than 0 then the total is the option's pay off and if it is not greater then zero the payoff is zero. This option is never out-of-the-money, meaning it always has intrinsic value, which makes it more expensive than a standard option.
+
+_The payoff functions for the Fixed Look Back Call and the Fixed Look Back Put, respectively, are:_
+
+${LookbackCall_{fixed}=\max(S_{max}-K,0)}$
+
+${LookbackPut_{fixed}=\max(K-S_{min},0)}$
+
+Where:
+
+1.${S_{max}}$ is the asset's maximum price during the life of the option
+
+2.${S_{min}}$ is the asset's minimum price during the life of the option
+
+3.${K}$ is the strike price
+
+For this option the strike price is fixed and the option is not performed at the price of maturity.The payoff is the maximum difference between the highest underlying asset price and the strike. For the call option, the holder chooses to exercise at the point when the underlying asset price is at its highest level. For the put option, the holder chooses to exercise at the underlying asset's lowest price. Our "fixedlookback" option tells us that if we use our call logic then if the underlying assets' maximum price minus the strike price is greater than 0 that's the option's pay off and if it is not greater then zero the payoff is zero. If we use the put logic the fixedlookback option it tells us that if the strike price minus the minimum price during the life of the option is greater than 0 then the total is the option's pay off and if it is not greater then zero the payoff is zero.
+
+_The payoff functions for the Asian Arithmetic Call and the Asian Arithmetic Put, respectively, are:_
+
+${AsianArithmeticCall= max(\bar S-K,0)}$
+
+${AsianArithmeticPut= max(K-\bar S,0)}$
+
+Where:
+
+1.${\bar S}$ is the mean/average rate in the stock
+
+2.${K}$ is the strike price
+
+Asian options are special kinds of option contracts.Asian Arithmatic payoff is determined by the average price over time.For our call it tells us that our asset's overall stock mean is greater than our strike price and for our put it tells us that our strike price is greater than our stock's mean. Our "asianarithmetic" option tells us that if we use our call logic then if the average rate/mean of the stock minus the strike price is greater than 0 that's the option's pay off and if it is not greater then zero the payoff is zero. If we use the put logic the asianarithmetic option it tells us that if the strike price minus the average rate/mean of the stock is greater than 0 then the total is the option's pay off and if it is not greater then zero the payoff is zero.Because of the averaging feature, Asian options reduce the volatility inherent in the option; therefore, Asian options are typically cheaper than European or American options. It also reduces the risk of market manipulation by not using maturity. 
+
+_The payoff functions for the Asian Geometric Call and the Asian Geometric Put, respectively, are:_
+_Note: Formulas below are for only two time interveals of the stock_
+
+$AsianGeometricCall = ( \sqrt{ S_1 \cdot S_2 } - K,0)$
+
+$AsianGeometricPut = (K- \sqrt{ S_1 \cdot S_2 },0)$
+
+Where:
+
+1.${\sqrt{ S_1 \cdot S_2}}$ is the geometric mean of the stock
+
+2.${K}$ is the strike price
+
+Asian options are special kinds of option contracts.Asian Geometric payoff is determined by the geometric mean price over time. For our call it tells us that our asset's geometric average is greater than our strike price and for our put it tells us that our strike price is greater than our stock's geometric average. Our "asiangeometric" option tells us that if we use our call logic then if the geometric average of the stock minus the strike price is greater than 0 that's the option's pay off and if it is not greater then zero the payoff is zero. If we use the put logic the asiangeometric option it tells us that if the strike price minus the geometric average of the stock is greater than 0 then the total is the option's pay off and if it is not greater then zero the payoff is zero.Because of the averaging feature, Asian options reduce the volatility inherent in the option; therefore, Asian options are typically cheaper than European or American options. It also reduces the risk of market manipulation by not using maturity. 
+
+_The payoff functions for the Asset Or Nothing Call and the Asset Or Nothing Put, respectively, are:_
+
+$AssetOrNothingCall = S_0N(d_1)$
+
+$AssetOrNothingPut =S_0N(-d_1)$
+
+$d_1={\frac {ln(S_0/K)+(r+\sigma^2/2)T}{\sigma \sqrt{T}}} $
+
+Where:
+
+1.${K}$ is the strike price
+
+2.${S_0}$ is underlying stock price
+
+3.$N_x$ is the standard normal cumulative distribution function
+
+4.$r$ is the interest rate
+
+5.$t$ is the time of the expiration
+
+6.$\sigma$ is volatility 
+
+Asset or Nothing option is a binary option where the payoff is value of the underlying security or nothing at all.Our "assetornothing' option tells us that if we use the call logic then we'll be multiplying our initial stock price by a normal cumulative distribution and this pays out one unit of asset if the spot is above the strike at maturity, or the payoff is nothing at all. If we use our put logic and multiple our initial stock price by a negative normal cumulative distribution this pays out one unit of asset if the spot is below the strike at maturity, or the payoff is nothing at all. While binary options may be used in theoretical asset pricing, they are considered high-risk, and they are prone to fraud and considered as a form of gambling by many places in the world. 
+
+```{r message=FALSE}
+option_types<-c("floatlookback","fixedlookback","asianarithmetic","asiangeometric","assetornothing")
+option_table<-setattr(lapply(option_types,option_est),"names",option_types) #table setting
+results_2<- setattr(lapply(option_types,function (i) option_est(i,callorput = "call")),"names",option_types)
+results_2
+```
+
+### [3.2] Running the Function & Results
+Running the function "opt_est" we call upon the default variables and the simulated stock prices from our first function. We specify that we want to use the "call" logic to figure out the payoff for each of our options and in our "results_2" we show our summarized results stating the present value for option prices of each payoff option using our call formulas. All of the numbers listed signify that those are the estimates for option prices/premiums in order to buy an options contract to give the holder the right to buy a share of the stock/underlying asset. For our "Floating Look Back" option the call states that the strike price is fixed at the asset's lowest price during the option's life so the amount stated is the premium you need to purchase a share at the lowest price for the options life. The "Fixed Look Back" option states that for the holder chooses to exercise at the point when the underlying asset price is at its highest level for the call so the amount states is the premium you need to purchase a share when the underlying asset is at it's highest. The "Asian Arithmetic" option states that the average stock prices are at greater value than their strike prices so the price shown is to purchase one unit of a share when the average stock price is higher than it's strike price.The "Asian Geometric" option states that the geometric average stock prices are at greater value than their strike prices so the price shown is to purchase one unit of a share when the geometric average stock price is higher than it's strike price.For the "Asset or Nothing" option the call states that multiplying our initial stock price by a normal cumulative distribution pays out one unit of the stock if it is above the strike at maturity. Essentially it pays the value of the underlying security and this is why the option price is a lot higher than the other four. 
+
+## [4] List of Things Learned
+* Different Option Payoff Formulas
+* Monte Carlo and Stochastic Process
+* Finding present value for each payoff
+
+## [5] Conclusion
+  In this assignment we simulated random stock prices, applied option payoff logic for the call options, and found the estimate of the option prices. We researched and looked at call and put formulas for different option contracts and discovered that all of the different payoff logic to determine when people should buy or sell for our price options can be determined by multiple things such as what is the maximum and minimum price of an options life, when the overall mean of stocks are higher or below the strike price, or what you could potentially get out of a all or nothing high risk situation. These things all tell investors when is a good time to "call," buy a share of an asset, or "put",sell a share of an asset. By simulating a large sample of 1,000 random stock prices and using our option payoff logic to find the present value of payoff for each path then find the estimate for the option price we're able to look at our results and see around what it costs to buy an option contract so we can buy or sell an underlying asset.
+  
+## [6] References:
+"Asian option." (2020, October 15). Retrieved from https://en.wikipedia.org/wiki/Asian_option
+“Lookback Option.” Wikipedia, Wikimedia Foundation, 18 Apr. 2020, en.wikipedia.org/wiki/Lookback_option. 
